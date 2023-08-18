@@ -1,0 +1,657 @@
+---
+title: "Monte Carlo Simulation and Betting System for Premier League Predictions"
+author: "Shubham Sharma - 22201541; VishalKrishna Bhosale - 22205276"
+date: "2023-08-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading the necessary libraries
+```{r message=FALSE}
+library(vegan)  # Used for conducting Procrustes Analysis on datasets
+library(stats)  # Used for performing Factor Analysis on data
+library(MASS)   # Used for Multidimensional Scaling analysis
+library(ggplot2)  # Used for creating visualizations with ggplot2
+library(dplyr)    # Used for data manipulation with dplyr
+library(reshape2)  # Used for data reshaping with reshape2
+source("functions.r")  # Loading custom functions from the "functions.r" script
+```
+
+Loading the data. Ensure that the dataset csv file is in the same folder as this markdown file.
+To see the EDA of the data, please load the python script from github.
+```{r}
+set.seed(123) # to get reproducible results 
+data = read.csv("E0.csv") # reading data 
+head(data) # glancing at the data 
+
+data_actual <- data[1:379, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")] # taking necessary columns 
+
+SimTable_actual <- Table(data_actual) # producing in table format 
+cat("SimTable_actual: A table containing the actual match results for further analysis.\n")
+print(SimTable_actual)
+```
+
+##  MAE Analysis and Optimal Sample Size Determination: 
+
+This code calculates Mean Absolute Error (MAE) for simulated match results and actual match results, determining the optimal sample size ("k") that minimizes the MAE.
+```{r warning=FALSE}
+# Define a function to calculate Mean Absolute Error (MAE) for home and away goals
+calculate_mae <- function(actual_home_goals, actual_away_goals, predicted_home_goals, predicted_away_goals) {
+  # Calculate MAE for home goals
+  mae_home <- mean(abs(predicted_home_goals - actual_home_goals))
+  # Calculate MAE for away goals
+  mae_away <- mean(abs(predicted_away_goals - actual_away_goals))
+  
+  return(list(mae_home = mae_home, mae_away = mae_away))
+}
+
+# Create an empty dataframe to store MAE for different values of k
+mae_df <- data.frame(k = numeric(), MAE_Home = numeric(), MAE_Away = numeric())
+
+# Loop over different values of k
+for (k in 200:300) {
+  # Subset the data to the first "k" samples
+  data_mae <- data_actual[1:k, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")]
+  # Calculate team parameters for the subsetted data
+  TeamParameters_mae <- Parameters(data_mae)
+  # Simulate the season using the subsetted data
+  SimSeason_mae <- Games(TeamParameters_mae, data_mae)
+  # Create a table of simulated results
+  SimTable_mae <- Table(SimSeason_mae)
+  
+  # Calculate MAE using the calculate_mae function
+  mae_scores <- calculate_mae(
+    actual_home_goals = SimTable_actual$HF,
+    actual_away_goals = SimTable_actual$AF,
+    predicted_home_goals = SimTable_mae$HF,
+    predicted_away_goals = SimTable_mae$AF
+  )
+  
+  # Store the MAE scores in the dataframe
+  mae_df <- rbind(mae_df, data.frame(k = k, MAE_Home = mae_scores$mae_home, MAE_Away = mae_scores$mae_away))
+}
+
+# Calculate the average of MAE_Home and MAE_Away for each k value
+mae_df_avg <- aggregate(cbind(MAE_Home, MAE_Away) ~ k, mae_df, mean)
+
+# Create a line plot to visualize the average MAE vs. Number of Samples (k)
+ggplot(mae_df_avg, aes(x = k)) +
+  geom_line(aes(y = (MAE_Home + MAE_Away) / 2, color = "Average MAE"), size = 1) +
+  labs(x = "Number of Samples (k)", y = "Average MAE", title = "Average MAE vs. Number of Samples (k)",
+       color = "Team") +
+  theme_minimal()
+
+# Find the index of the minimum average MAE
+min_index <- which.min((mae_df_avg$MAE_Home + mae_df_avg$MAE_Away) / 2)
+# Calculate the average MAE for each k value
+mae_df_avg$Avg_MAE <- (mae_df_avg$MAE_Home + mae_df_avg$MAE_Away) / 2
+# Sort the dataframe by average MAE
+sorted_df <- mae_df_avg[order(mae_df_avg$Avg_MAE), ]
+
+# Get the value of the "k" column for the lowest MAE
+min_k_value <- sorted_df$k[3]
+
+# Print the minimum k value
+cat("The minimum k value for the given range 200-300 is: ", min_k_value)
+```
+
+Splitting the data using this k value, taking a subset to train.
+```{r}
+data_subset <- data[1:min_k_value, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")]
+```
+
+## Approach 1: Team Strength Analysis and Home Advantage Optimization: 
+This code chunk calculates the Attack and Defence Strength for each team based on historical match data. It ranks the teams according to these strengths and performs cross-validation to optimize the home advantage parameter for the Poisson modeling approach. The optimal home advantage value that minimizes Mean Squared Error (MSE) is determined. Furthermore, the simulated table is printed using this formula/functional approach. 
+```{r}
+# Calculate Attack Strength and Defence Strength for each team
+team_data <- data.frame(Team = unique(c(data_subset$HomeTeam, data_subset$AwayTeam)))
+
+# Calculate Attack and Defence Strength for each team
+team_data$Attack <- sapply(team_data$Team, function(team) {
+  # Calculate average goals scored and conceded for the team
+  avg_goals_scored <- mean(c(data_subset$FTHG[data_subset$HomeTeam == team], data_subset$FTAG[data_subset$AwayTeam == team]))
+  avg_goals_conceded <- mean(c(data_subset$FTAG[data_subset$HomeTeam == team], data_subset$FTHG[data_subset$AwayTeam == team]))
+  return(avg_goals_scored - avg_goals_conceded)
+})
+team_data$Defence <- sapply(team_data$Team, function(team) {
+  # Calculate average goals scored and conceded for the team
+  avg_goals_scored <- mean(c(data_subset$FTHG[data_subset$HomeTeam == team], data_subset$FTAG[data_subset$AwayTeam == team]))
+  avg_goals_conceded <- mean(c(data_subset$FTAG[data_subset$HomeTeam == team], data_subset$FTHG[data_subset$AwayTeam == team]))
+  return(avg_goals_conceded - avg_goals_scored)
+})
+
+# Sort the data by team name
+team_data <- team_data[order(team_data$Team), ]
+
+# Rank teams based on Attack Strength and Defence Strength
+team_data$Attack_Rank <- rank(-team_data$Attack)
+team_data$Defence_Rank <- rank(-team_data$Defence)
+
+rownames(team_data) <- team_data$Team
+team_data <- team_data[, -1]  # Remove the redundant Team column
+
+# Print sorted and ranked teams
+cat("The teams attack and defense values and rank are as follows: \n")
+print(team_data)
+
+# Create parameters list for Poisson modeling
+parameters = list(teams = team_data[, 1:2])
+```
+
+## Optimizing Home Advantage with formula based Analysis: 
+In this code segment, the optimal home advantage parameter is determined by evaluating mean squared errors for different home advantage values using k-fold cross-validation. A plot is generated to visualize how mean squared error varies with home advantage values. As seen from the results, the home advantage parameter is 0.05, implying that the home team has an advantage over the away team. This could be due to ground familiarity and fan support. The 22-23 season graph in the python notebook confirms more home team goals, enhancing realism.
+```{r}
+# Set possible home advantage values to test
+possible_home_advantages <- seq(0, 1, by = 0.05)
+
+# Initialize a vector to store mean squared errors for each home advantage value
+mse_values <- numeric(length(possible_home_advantages))
+
+# Perform k-fold cross-validation (e.g., k = 5)
+k <- 5
+set.seed(123)  # For reproducibility
+indices <- sample(rep(1:k, length.out = nrow(data_subset)))
+
+# Loop through each home advantage value and perform cross-validation
+for (i in 1:length(possible_home_advantages)) {
+  home_advantage <- possible_home_advantages[i]
+  total_mse <- 0
+  
+  for (fold in 1:k) {
+    # Split data into training and testing sets
+    train_data <- data_subset[indices != fold, ]
+    test_data <- data_subset[indices == fold, ]
+    
+    # Initialize fold-specific MSE
+    mse_fold <- 0
+    
+    for (row in 1:nrow(test_data)) {
+      a <- test_data[row, "HomeTeam"]
+      b <- test_data[row, "AwayTeam"]
+      
+      # Calculate lambdaa and lambdab with home advantage
+      lambdaa <- exp(parameters$teams[a, "Attack"] - parameters$teams[b, "Defence"] + home_advantage)
+      lambdab <- exp(parameters$teams[b, "Attack"] - parameters$teams[a, "Defence"])
+      
+      # Check if lambda values are valid
+      if (lambdaa < 0) lambdaa <- 0
+      if (lambdab < 0) lambdab <- 0
+      
+      # Simulate goals using Poisson distribution
+      predicted_fthg <- rpois(1, lambdaa)
+      predicted_ftag <- rpois(1, lambdab)
+      
+      # Calculate squared error
+      mse_fold <- mse_fold + (predicted_fthg - test_data[row, "FTHG"])^2 + (predicted_ftag - test_data[row, "FTAG"])^2
+    }
+    
+    total_mse <- total_mse + mse_fold
+  }
+  
+  # Calculate mean squared error for the home advantage value
+  mse_values[i] <- total_mse / nrow(data_subset)
+}
+
+# Find the home advantage value with the lowest mean squared error
+optimal_index <- which.min(mse_values)
+optimal_home_advantage <- possible_home_advantages[optimal_index]
+
+# Print results
+cat("Optimal Home Advantage:", optimal_home_advantage, "\n")
+cat("Corresponding Mean Squared Error:", mse_values[optimal_index], "\n")
+
+# Create a data frame for plotting
+plot_data <- data.frame(HomeAdvantage = possible_home_advantages, MSE = mse_values)
+
+# Create a plot to visualize Mean Squared Error vs. Home Advantage
+ggplot(plot_data, aes(x = HomeAdvantage, y = MSE)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Mean Squared Error vs. Home Advantage",
+       x = "Home Advantage",
+       y = "Mean Squared Error") +
+  theme_minimal()
+
+# Create parameters list for Poisson modeling with optimal home advantage
+parameters = list(teams = team_data[, 1:2], home = optimal_home_advantage)
+# Simulate the season using Poisson modeling with optimal parameters
+SimSeason_formula <- Games(parameters, data_subset)
+SimTable_formula <- Table(SimSeason_formula)
+
+cat("SimTable_formula: A table containing the simulated match results using the formula.\n")
+SimTable_formula
+```
+
+## Approach 2: Principal Component Analysis (PCA) for Team Strength Assessment: 
+This code chunk performs Principal Component Analysis (PCA) on team-wise statistics to assess the Attack and Defence Strength of each team. It visualizes the variance explained by each principal component and extracts PCA-based team strength parameters for further analysis.
+```{r}
+# Transpose the data to get team-wise statistics
+Subset_Table <- Table(data_subset)
+
+# Create a data frame with team-wise statistics for PCA
+team_data <- as.data.frame(t(Subset_Table[, c("HF", "HA", "AF", "AA")]))
+
+# Standardize the data before performing PCA
+team_data_standardized <- scale(team_data)
+
+# Perform PCA on standardized team data
+pca_result <- prcomp(team_data_standardized, center = TRUE, scale. = TRUE)
+
+# Extract the principal components from PCA results
+principal_components <- pca_result$rotation
+
+# Create a new data frame to store principal components and team names
+team_pca <- data.frame(Team = Subset_Table$Team, principal_components)
+
+# Extract the proportion of variance explained by each principal component
+variance_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+
+# Calculate the cumulative proportion of variance explained
+cumulative_variance <- cumsum(variance_explained)
+
+# Plot the variance explained by each principal component
+barplot(variance_explained, names.arg = seq_along(variance_explained), 
+        xlab = "Principal Component", ylab = "Variance Explained",
+        main = "Variance Explained by Each Principal Component")
+
+# Plot the cumulative variance explained
+plot(cumulative_variance, type = "b", 
+     xlab = "Number of Principal Components", ylab = "Cumulative Variance Explained",
+     main = "Cumulative Variance Explained by Principal Components")
+
+# Order the team_pca data frame by team names
+team_pca <- team_pca[order(team_pca$Team), ]
+
+# Create parameters list for PCA-based team strength
+Team_strength <- data.frame(Team = team_pca$Team, Attack = team_pca$PC1,  Defence = team_pca$PC2)
+rownames(Team_strength) <- Team_strength$Team
+Team_strength <- Team_strength[, -1]  # Remove the redundant Team column
+
+# Create parameters list for PCA-based team strength
+TeamParameters_pca = list(teams = Team_strength)
+```
+As seen from the scree plot and barplot, the majority variance is being explained by the first two principal components. Hence, pc=2 can be used for further analysis.
+
+## Optimizing Home Advantage with PCA-based Analysis: 
+In this code segment, the optimal home advantage parameter is determined by evaluating mean squared errors for different home advantage values using k-fold cross-validation. PCA-based team strength parameters are used in a Poisson modeling approach for simulating goals and calculating errors. A plot is generated to visualize how mean squared error varies with home advantage values. As seen from the plot, and results, the optimal home advantage is 0 implying that the home parameter has been incorporated in the principal components derived earlier. 
+```{r}
+# Set possible home advantage values to test
+possible_home_advantages <- seq(0, 1, by = 0.05)
+
+# Initialize a vector to store mean squared errors for each home advantage value
+mse_values <- numeric(length(possible_home_advantages))
+
+# Perform k-fold cross-validation (e.g., k = 5)
+k <- 5
+set.seed(123)  # For reproducibility
+indices <- sample(rep(1:k, length.out = nrow(data_subset)))
+
+# Loop through each home advantage value and perform cross-validation
+for (i in 1:length(possible_home_advantages)) {
+  home_advantage <- possible_home_advantages[i]
+  total_mse <- 0
+  
+  for (fold in 1:k) {
+    # Split data into training and testing sets
+    train_data <- data_subset[indices != fold, ]
+    test_data <- data_subset[indices == fold, ]
+    
+    # Initialize fold-specific MSE
+    mse_fold <- 0
+    
+    for (row in 1:nrow(test_data)) {
+      a <- test_data[row, "HomeTeam"]
+      b <- test_data[row, "AwayTeam"]
+      
+      # Calculate lambdaa and lambdab with home advantage
+      lambdaa <- exp(TeamParameters_pca$teams[a, "Attack"] - TeamParameters_pca$teams[b, "Defence"] + home_advantage)
+      lambdab <- exp(TeamParameters_pca$teams[b, "Attack"] - TeamParameters_pca$teams[a, "Defence"])
+      
+      # Check if lambda values are valid
+      if (lambdaa < 0) lambdaa <- 0
+      if (lambdab < 0) lambdab <- 0
+      
+      # Simulate goals using Poisson distribution
+      predicted_fthg <- rpois(1, lambdaa)
+      predicted_ftag <- rpois(1, lambdab)
+      
+      # Calculate squared error
+      mse_fold <- mse_fold + (predicted_fthg - test_data[row, "FTHG"])^2 + (predicted_ftag - test_data[row, "FTAG"])^2
+    }
+    
+    total_mse <- total_mse + mse_fold
+  }
+  
+  # Calculate mean squared error for the home advantage value
+  mse_values[i] <- total_mse / nrow(data)
+}
+
+# Find the home advantage value with the lowest mean squared error
+optimal_index <- which.min(mse_values)
+optimal_home_advantage <- possible_home_advantages[optimal_index]
+cat("Optimal Home Advantage:", optimal_home_advantage, "\n")
+
+# Create a data frame for plotting
+plot_data <- data.frame(HomeAdvantage = possible_home_advantages, MSE = mse_values)
+
+# Create a plot using ggplot2
+ggplot(plot_data, aes(x = HomeAdvantage, y = MSE)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Mean Squared Error vs. Home Advantage",
+       x = "Home Advantage",
+       y = "Mean Squared Error") +
+  theme_minimal()
+```
+
+## Season Simulation and Results with PCA-based Team Strength: 
+Simulating the season using PCA-derived team strength parameters and computing the simulation results in the SimTable_pca table.
+```{r}
+# Check the updated TeamParameters with optimal home advantage
+TeamParameters_pca = list(teams = Team_strength, home = optimal_home_advantage)
+
+# Simulate the season using PCA-based team strength parameters
+SimSeason_pca <- Games(TeamParameters_pca, data_subset)
+
+# Create the simulation table using PCA-based team strength
+SimTable_pca <- Table(SimSeason_pca)
+
+cat("SimTable_pca: A table containing the simulated match results using Principal Component Analysis. \n")
+SimTable_pca
+```
+
+## Approach 3: Season Simulation and Results with GLM-based Team Strength: 
+This code segment utilizes a Generalized Linear Model (GLM) approach to compute team parameters and simulates the season accordingly. The results of the simulation are displayed in the SimTable_glm table.
+```{r}
+# Calculate team parameters for a Generalized Linear Model (GLM) approach
+TeamParameters_glm <- Parameters(data_subset)
+
+# Simulate the season using GLM-based team parameters
+SimSeason_glm <- Games(TeamParameters_glm, data_subset)
+
+# Create the simulation table using GLM-based team strength
+SimTable_glm <- Table(SimSeason_glm)
+cat("SimTable_glm: A table containing the simulated match results using GLM. \n")
+SimTable_glm
+```
+
+## Approach 4: Factor Analysis for Dimension Reduction and Interpretation: 
+This code snippet employs Factor Analysis (FA) with varimax rotation to reduce the dimensionality of the data while maximizing the interpretability of the factors. The resulting object captures two latent factors for visualization and analysis.
+```{r, error=TRUE}
+# Perform Factor Analysis (FA) with varimax rotation
+# Extract two factors to maintain two dimensions for visualization
+fa = factanal(team_data_standardized, 2, rotation="varimax")
+```
+The Factor Analysis (FA) procedure encountered an error due to a computational singularity issue. This error arises when the system's matrix becomes nearly singular, resulting in an extremely small reciprocal condition number. As a consequence, the FA procedure cannot accurately estimate the relationships between variables.
+
+## Multidimensional Scaling (MDS) Visualization of Simulation Results: 
+This code section utilizes the isoMDS function from the MASS library to perform non metric Multidimensional Scaling (MDS) based on pairwise distances. MDS provides a two-dimensional representation of simulated results from different methods, allowing for visual comparison and analysis.
+```{r, warning=FALSE}
+# Perform non metric MDS using pairwise distances for actual match results
+loc_actual = isoMDS(dist(SimTable_actual), k=2, trace=FALSE)
+# Perform non metric MDS using pairwise distances for PCA-based simulated results
+loc_pca = isoMDS(dist(SimTable_pca), k=2, trace=FALSE)
+# Perform non metric MDS using pairwise distances for GLM-based simulated results
+loc_glm = isoMDS(dist(SimTable_glm), k=2, trace=FALSE)
+# Perform non metric MDS using pairwise distances for formula-based simulated results
+loc_formula = isoMDS(dist(SimTable_formula), k=2, trace=FALSE)
+```
+
+## Procrustes Analysis for Comparison of MDS Configurations: 
+This code section employs the vegan library to conduct Procrustes Analysis, a technique that aligns and compares different Multidimensional Scaling (MDS) configurations. The analysis is performed between the MDS representations of actual match results and those obtained using different simulation methods, facilitating a comparison of the simulated outcomes.
+```{r}
+# Perform Procrustes Analysis to compare MDS configurations with actual results
+procrustes(loc_actual$points, loc_glm$points)
+procrustes(loc_actual$points, loc_pca$points)
+procrustes(loc_actual$points, loc_formula$points)
+```
+
+As seen from the results, PCA has the lowest sum of squares, implying that it most closely linked to the actual results. Therefore, it will be used for further analysis.
+
+```{r}
+# Taking the results of the best configuration based on sum of squares result
+procrustes_result <- procrustes(loc_actual$points, loc_pca$points)
+
+# Extract the aligned points
+aligned_points <- procrustes_result$X
+
+# Create a scatter plot
+plot(aligned_points[, 1], aligned_points[, 2], type = "n", xlab = "Aligned Points (PCA)", ylab = "Aligned Points (Actual)", xlim = c(-30, 40))
+
+# Add points from loc_actual and loc_pca
+points(loc_actual$points, loc_pca$points, col = "blue", pch = 16)
+text(loc_actual$points, loc_pca$points, labels = loc_actual$Team, pos = 3, col = "blue")
+
+# Add a 1:1 reference line
+abline(0, 1, col = "red", lty = 2)
+
+# Add legend
+legend("bottomright", legend = c("Aligned Points", "1:1 Line"), col = c("blue", "red"), pch = c(16, NA), lty = c(NA, 2))
+
+# Add heading
+title("Procrustes Analysis: PCA vs. Actual League Table Alignment")
+```
+
+## Visual Comparison of Non-Metric Scaling: 
+Actual Table vs. PCA Table: These plots display the MDS points obtained from non-metric scaling for both the actual league table and the PCA simulation. The points are labeled with abbreviated team names. The visualization helps assess how well the non-metric scaling captures the relationships between teams in both scenarios.
+```{r, warning=FALSE}
+# Create a scatter plot of actual table MDS points
+plot_actual <- data.frame(x = loc_actual$points[,1], y = loc_actual$points[,2], label = substr(SimTable_actual$Team, 1, 5))
+ggplot(plot_actual, aes(x = x, y = y, label = label)) +
+  geom_point(color = "blue", alpha = 0.5, size=2) +  # Change color and decrease transparency
+  geom_text(aes(label = label), hjust = 0.5, vjust = -0.5, size = 3) +
+  labs(x = "Dimension 1", y = "Dimension 2", title = "Non metric scaling of Actual Table") +
+  xlim(-80, 70) +
+  theme_minimal()
+
+# Create a scatter plot of PCA table MDS points
+plot_pca <- data.frame(x = loc_pca$points[,1], y = loc_pca$points[,2], label = substr(SimTable_pca$Team, 1, 5))
+ggplot(plot_pca, aes(x = x, y = y, label = label)) +
+  geom_point(color = "blue", alpha = 0.5, size=2) +  # Change color and decrease transparency
+  geom_text(aes(label = label), hjust = 0.5, vjust = -0.5, size = 3) +
+  labs(x = "Dimension 1", y = "Dimension 2", title = "Non metric scaling of PCA table") +
+  xlim(-80, 70) +
+  theme_minimal()
+```
+
+## Statistical Analysis and Error Metrics: 
+This code calculates Spearman correlations between actual and simulated points for different modeling approaches: GLM, PCA, and Formula. It also calculates Mean Absolute Error (MAE) and Mean Absolute Percentage Error (MAPE) for each approach. These metrics provide insights into the alignment and accuracy of the simulated league tables compared to the actual league table.
+```{r warning=FALSE}
+# Calculate Spearman correlation between Actual Points and GLM Points
+spearman_corr <- cor.test(SimTable_actual$Points, SimTable_glm$Points, method = "spearman")
+
+# Calculate Spearman correlation between Actual Points and PCA Points
+spearman_corr2 <- cor.test(SimTable_actual$Points, SimTable_pca$Points, method = "spearman")
+
+# Calculate Spearman correlation between Actual Points and Formula Points
+spearman_corr3 <- cor.test(SimTable_actual$Points, SimTable_formula$Points, method = "spearman")
+
+# Calculate Mean Absolute Error (MAE) between Actual Points and GLM Points
+mae_glm = mean(abs(SimTable_actual$Points - SimTable_glm$Points))
+
+# Calculate Mean Absolute Error (MAE) between Actual Points and PCA Points
+mae_pca2 = mean(abs(SimTable_actual$Points - SimTable_pca$Points))
+
+# Calculate Mean Absolute Error (MAE) between Actual Points and Formula Points
+mae_formula = mean(abs(SimTable_actual$Points - SimTable_formula$Points))
+
+# Calculate Mean Absolute Percentage Error (MAPE) between Actual Points and GLM Points
+mape_glm = mean(abs((SimTable_actual$Points - SimTable_glm$Points) / SimTable_actual$Points)) * 100
+
+# Calculate Mean Absolute Percentage Error (MAPE) between Actual Points and PCA Points
+mape_pca2 = mean(abs((SimTable_actual$Points - SimTable_pca$Points) / SimTable_actual$Points)) * 100
+
+# Calculate Mean Absolute Percentage Error (MAPE) between Actual Points and Formula Points
+mape_formula = mean(abs((SimTable_actual$Points - SimTable_formula$Points) / SimTable_actual$Points)) * 100
+```
+
+The table displays various evaluation metrics for different modeling approaches: GLM, PCA, and Formula. The GLM approach has the lowest MAE and MAPE scores, indicating better accuracy and lower relative error. Additionally, both Procrustes and Correlation Scores are high for all approaches, suggesting strong alignment with the actual league table. Overall, the GLM approach shows the most favorable performance based on the metrics. Therefore, it will be used for further analysis.
+```{r}
+# Create a data frame to store various metrics for different modeling approaches
+metrics_results <- data.frame(
+  Metric = c("MAE Score", "MAPE Score", "Procrustes Score", "Correlation Score"),
+  GLM = c(mae_glm, mape_glm, sum(residuals(procrustes(loc_actual$points, loc_glm$points))^2), spearman_corr$estimate),
+  PCA = c(mae_pca2, mape_pca2, sum(residuals(procrustes(loc_actual$points, loc_pca$points))^2), spearman_corr2$estimate),
+  Formula = c(mae_formula, mape_formula, sum(residuals(procrustes(loc_actual$points, loc_formula$points))^2), spearman_corr3$estimate)
+)
+
+# Print the results table
+print(metrics_results)
+```
+
+## Match Result Probabilities and Outcomes: GLM Approach: 
+This code calculates the probabilities of match results (Home Win, Draw, Away Win) for each combination of teams using the GLM-based approach. It iterates through valid team combinations, calculates probabilities, and stores them along with the outcome probabilities in a list. Finally, the extracted values are organized into a dataframe to present match result probabilities for further analysis.
+```{r}
+# Create an empty list to store the probabilities and result probabilities for each combination
+all_probabilities <- list()
+
+# Get the names of the teams
+team_names <- rownames(TeamParameters_glm$teams)
+
+# Nested loop to iterate through all combinations of teams playing against each other
+for (i in 1:length(team_names)) {
+  for (j in (i + 1):length(team_names)) {
+    # Get the names of the two teams for this combination
+    team1 <- team_names[i]
+    team2 <- team_names[j]
+    
+    # Check if the combination is valid (not a team against itself and no NA teams)
+    if (team1 != team2 && !is.na(team1) && !is.na(team2)) {
+      # Calculate probabilities for the two teams playing against each other
+      Probabilities <- ProbTable(TeamParameters_glm, team1, team2)
+      
+      # Calculate result probabilities
+      ResultProbabilities <- ResultProbs(Probabilities)
+      
+      # Store the probabilities and result probabilities for this combination in the list
+      combination_name <- paste(team1, "vs", team2, sep = " ")
+      all_probabilities[[combination_name]] <- list(Probabilities = Probabilities, ResultProbabilities = ResultProbabilities)
+    }
+  }
+}
+
+# Create an empty dataframe to store the results
+results_df <- data.frame(
+  Combination = character(),
+  HomeWin = numeric(),
+  Draw = numeric(),
+  AwayWin = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Iterate through the all_probabilities list to extract and store the required values
+for (combination_name in names(all_probabilities)) {
+  # Extract the result probabilities for the current combination
+  result_probs <- all_probabilities[[combination_name]]$ResultProbabilities
+  
+  # Extract the HomeWin, Draw, and AwayWin probabilities for the current combination
+  home_win_prob <- result_probs$HomeWin
+  draw_prob <- result_probs$Draw
+  away_win_prob <- result_probs$AwayWin
+  
+  # Append the extracted values to the dataframe
+  results_df <- rbind(results_df, data.frame(
+    Combination = combination_name,
+    HomeWin = home_win_prob,
+    Draw = draw_prob,
+    AwayWin = away_win_prob
+  ))
+}
+```
+
+# Calculating Odds from Probabilities:
+This code snippet calculates the odds for home win, draw, and away win based on the simulated match winning probabilities in the results_df. It divides the probability of each outcome by the complement of that probability to obtain the corresponding odds. 
+```{r}
+# Calculate odds using the provided probabilities in results_df
+results_df$HomeWin_Odds <- results_df$HomeWin / (100 - results_df$HomeWin)
+results_df$Draw_Odds <- results_df$Draw / (100 - results_df$Draw)
+results_df$AwayWin_Odds <- results_df$AwayWin / (100 - results_df$AwayWin)
+
+# Print the DataFrame with odds
+cat("results_df: A table containing the simulated match winning probabilities and odds using GLM. \n")
+print(head(results_df))
+```
+
+# Correlation Analysis: 
+Match Result Probabilities and Betting Odds (GLM Approach): This code performs a correlation analysis between match result probabilities (Home Win, Draw, Away Win) obtained through the GLM approach and betting odds (from Bet365 and IW organisation) for each team combination. It standardizes the probabilities and odds, calculates correlation coefficients, and then computes the average correlation coefficients. The results provide insights into the relationship between probabilities and betting odds.
+```{r warning=FALSE}
+# Split the Combination column into separate HomeTeam and AwayTeam columns
+results_df_split <- strsplit(results_df$Combination, " vs ", fixed = TRUE)
+results_df$AwayTeam <- sapply(results_df_split, `[`, 1)
+results_df$HomeTeam <- sapply(results_df_split, `[`, 2)
+
+# Merge the dataframes to include betting odds for HomeTeam and AwayTeam
+results_df <- merge(results_df, data[, c("HomeTeam", "AwayTeam", "B365H", "B365D", "B365A", "IWH", "IWD", "IWA")],
+             by.x = c("HomeTeam", "AwayTeam"), by.y = c("HomeTeam", "AwayTeam"), all.x = TRUE)
+names(results_df)[names(results_df) %in% c("B365H", "B365D", "B365A")] <- c("B365Home", "Bet365Draw", "B365Away")
+names(results_df)[names(results_df) %in% c("IWH", "IWD", "IWA")] <- c("IWHome", "IWDraw", "IWAway")
+
+# Columns to scale
+cols_to_scale <- c("HomeWin_Odds", "Draw_Odds", "AwayWin_Odds")
+cols_to_scale2 <- c("IWHome", "IWDraw", "IWAway")
+cols_to_scale3 <- c("B365Home", "Bet365Draw", "B365Away")
+
+# Standardize the scaled columns
+results_df[cols_to_scale] <- scale(results_df[cols_to_scale])
+results_df[cols_to_scale2] <- scale(results_df[cols_to_scale2])
+results_df[cols_to_scale3] <- scale(results_df[cols_to_scale3])
+
+# save these results
+correlation_hw1 = cor(results_df$HomeWin_Odds, results_df$B365Home)
+correlation_aw1 = cor(results_df$AwayWin_Odds, results_df$B365Away)
+correlation_hw2 = cor(results_df$HomeWin_Odds, results_df$IWHome)
+correlation_aw2 = cor(results_df$AwayWin_Odds, results_df$IWAway)
+
+# Create a DataFrame to store correlation coefficients
+correlation_results <- data.frame(
+  Metric = c("Bet365 vs Homewin Correlation", "Bet365 vs Awaywin Correlation", "Average Bet365 Correlation",
+             "IW vs Homewin Correlation", "IW vs Awaywin Correlation", "Average IW Correlation"),
+  Correlation = c(
+    cor(results_df$HomeWin_Odds, results_df$B365Home),
+    cor(results_df$AwayWin_Odds, results_df$B365Away),
+    mean(c(correlation_hw1, correlation_aw1)),
+    cor(results_df$HomeWin_Odds, results_df$IWHome),
+    cor(results_df$AwayWin_Odds, results_df$IWAway),
+    mean(c(correlation_hw2, correlation_aw2))
+  )
+)
+
+# Print the correlation results DataFrame
+cat("correlation_results: A table containing the Correlation results between simulated odds and organisational odds using GLM. \n")
+print(correlation_results)
+```
+The table displays correlation coefficients between different metrics and betting odds. Both Bet365 and IW odds show strong positive correlations with predicted HomeWin and AwayWin probabilities. Additionally, the average correlation further emphasizes the consistent alignment between the predictive model's estimates and the actual betting markets.
+
+# Simulating Betting Strategy Performance: 
+This code segment merges betting data with match data, calculates team parameters for betting simulation, and then simulates different betting scenarios to analyze the total earnings based on varying numbers of bets per match. 
+```{r}
+# Merge betting data with match data
+results_df2 <- merge(results_df, data[, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")],
+                    by.x = c("HomeTeam", "AwayTeam"), by.y = c("HomeTeam", "AwayTeam"), all.x = TRUE)
+
+# Calculate team parameters using the merged data
+TeamParameters_bets = Parameters(results_df2[, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")])
+
+# Simulate the season's matches using the calculated parameters
+SimSeason_bets <- Games(TeamParameters_bets, results_df2[, c("HomeTeam", "AwayTeam", "FTHG", "FTAG")])
+
+# Initialize an empty dataframe to store results of different betting scenarios
+money_df <- data.frame(NumBetsPerMatch = numeric(0), TotalEarnings = numeric(0))
+
+# Loop through different numbers of bets per match
+for (num_bets_per_match in 100:150) {
+  # Run the betting simulation for the season and calculate total earnings
+  total_house_earnings_season <- simulate_betting_season(TeamParameters_bets, SimSeason_bets, num_bets_per_match)
+  
+  # Append the results to the money_df dataframe
+  money_df <- rbind(money_df, data.frame(NumBetsPerMatch = num_bets_per_match, TotalEarnings = total_house_earnings_season))
+}
+
+# Print the results of different betting scenarios
+cat("money_df: A table containing the total house earnings with relation to the number of bets placed \n")
+print(money_df)
+```
+The data shows a trend where as the number of bets per match increases (from 100 to 150), the total earnings increases. This suggests that with a higher number of bets placed per match, the house's total earnings from those bets tend to increase. This trend could be indicative of the relationship between the number of bets made and the overall profitability for the house, implying that as the number of bets increases, the house's earnings become more favorable.
