@@ -5,7 +5,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-up%20to%20date-brightgreen.svg)
 ![Contributions welcome](https://img.shields.io/badge/contributions-welcome-orange.svg)
 
-Welcome to the **SportsStatPredict** project repository! This project aims to leverage machine learning algorithms to predict sports outcomes, project league standings, and provide insights into betting odds. By combining historical sports statistics and real-time odds data, this project enhances the understanding of sports events and their potential outcomes.
+Welcome to the **Monte Carlo Simulation and Betting System for Premier League Predictions** project repository! This project aims to leverage machine learning algorithms to predict sports outcomes, project league standings, and provide insights into betting odds. By combining historical sports statistics and real-time odds data, this project enhances the understanding of sports events and their potential outcomes.
 
 ### Table of Contents
 - [Project Overview](#project-overview)
@@ -20,7 +20,7 @@ Welcome to the **SportsStatPredict** project repository! This project aims to le
 
 ### Project Overview
 
-The **SportsStatPredict** project is designed to provide users with accurate predictions for sports outcomes, league standings, and betting odds comparisons. By utilizing machine learning techniques, historical sports statistics, and real-time odds data, the project aims to enhance sports enthusiasts' understanding of upcoming events.
+The **Monte Carlo Simulation and Betting System for Premier League Predictions** project is designed to provide users with accurate predictions for sports outcomes, league standings, and betting odds comparisons. By utilizing machine learning techniques, historical sports statistics, and real-time odds data, the project aims to enhance sports enthusiasts' understanding of upcoming events.
 
 ### Data Sources
 
@@ -101,7 +101,7 @@ The Poisson distribution is used in simulating football matches via MCMC due to 
 5. Compare predicted odds with actual organization-provided odds.
 6. Translate odds to monetary terms, ensuring the house profits.
 
-- Principal Component Analysis (PCA) is a dimensionality reduction technique commonly used in machine learning to transform high-dimensional data into a lower-dimensional space while preserving as much variance as possible. In SportsStatPredict project, PCA has been used to extract meaningful features such as the team strengths, incorporating the home team advantage, from sports statistics data. This has in turn been used to simulate the league standings, and the odds for a team to win a game. It can be seen that the first two principal components reflect more than 95% variability in the data. 
+- Principal Component Analysis (PCA) is a dimensionality reduction technique commonly used in machine learning to transform high-dimensional data into a lower-dimensional space while preserving as much variance as possible. In Monte Carlo Simulation and Betting System for Premier League Predictions project, PCA has been used to extract meaningful features such as the team strengths, incorporating the home team advantage, from sports statistics data. This has in turn been used to simulate the league standings, and the odds for a team to win a game. It can be seen that the first two principal components reflect more than 95% variability in the data. 
 
 ```R
 team_data <- as.data.frame(t(Table285[, c("HF", "HA", "AF", "AA")]))# Standardize the data before performing PCA
@@ -109,7 +109,7 @@ team_data <- as.data.frame(t(Table285[, c("HF", "HA", "AF", "AA")]))# Standardiz
 pca_result1 <- prcomp(scale(team_data), center = TRUE, scale. = TRUE)
 ```
 
-- In addition to Principal Component Analysis (PCA), the SportsStatPredict project also employs Non-Metric Multidimensional Scaling (MDS) for visualizing teams in a 2D space while preserving their relative ranks. MDS is a technique that aims to represent high-dimensional data in a lower-dimensional space, often for visualization purposes. Non-Metric MDS is utilized to map team data into a 2D space, allowing for an intuitive visualization of team relationships. This technique retains the relative differences between teams while projecting them onto a 2D plane, providing insights into team clusters, similarities, and disparities.
+- In addition to Principal Component Analysis (PCA), the Monte Carlo Simulation and Betting System for Premier League Predictions project also employs Non-Metric Multidimensional Scaling (MDS) for visualizing teams in a 2D space while preserving their relative ranks. MDS is a technique that aims to represent high-dimensional data in a lower-dimensional space, often for visualization purposes. Non-Metric MDS is utilized to map team data into a 2D space, allowing for an intuitive visualization of team relationships. This technique retains the relative differences between teams while projecting them onto a 2D plane, providing insights into team clusters, similarities, and disparities.
   
 ```R
 # Non-Metric MDS for 2D visualization
@@ -119,7 +119,7 @@ loc = isoMDS(dist(SimTable_actual), k=2, eig=TRUE)
 
 ### Results
 
-- The SportsStatPredict project utilizes Procrustes analysis to compare the results obtained from different models. Procrustes analysis is a technique that aligns two sets of data points to best match their structures. In the context of this project, Procrustes analysis is used to align the MDS representations of different models, enabling a quantitative comparison of their predictions and visualizations in the 2D space. The scatter plot below visualizes the results of a Procrustes analysis performed on two sets of Non-metric Multidimensional scaled data of the actual standing and pca standing table. The blue points correspond to the aligned data points from the "Actual" set, while the red dashed line indicates the 1:1 reference line, highlighting how well the alignment matches the original data.
+- The Monte Carlo Simulation and Betting System for Premier League Predictions project utilizes Procrustes analysis to compare the results obtained from different models. Procrustes analysis is a technique that aligns two sets of data points to best match their structures. In the context of this project, Procrustes analysis is used to align the MDS representations of different models, enabling a quantitative comparison of their predictions and visualizations in the 2D space. The scatter plot below visualizes the results of a Procrustes analysis performed on two sets of Non-metric Multidimensional scaled data of the actual standing and pca standing table. The blue points correspond to the aligned data points from the "Actual" set, while the red dashed line indicates the 1:1 reference line, highlighting how well the alignment matches the original data.
 
 ```R
 procrustes(loc$points, loc2$points)
@@ -156,7 +156,7 @@ To achieve this, a simulation-based approach is used to analyze the potential ea
 
 ### Future Prospects
 
-The current simulation-based approach, inspired by SportsStatPredict, holds exciting prospects for future applications. It can be extended to different sports leagues, seasons, and even esports. Enhancements can involve integrating real-time data for a more realistic house earnings model and comparing a variety of machine learning models like Random Forests and Neural Networks for improved predictions. This expansion could greatly amplify the methodology's versatility, accuracy, and relevance for sports analytics and the betting industry.
+The current simulation-based approach, inspired by Monte Carlo Simulation and Betting System for Premier League Predictions, holds exciting prospects for future applications. It can be extended to different sports leagues, seasons, and even esports. Enhancements can involve integrating real-time data for a more realistic house earnings model and comparing a variety of machine learning models like Random Forests and Neural Networks for improved predictions. This expansion could greatly amplify the methodology's versatility, accuracy, and relevance for sports analytics and the betting industry.
 
 ## Conclusion
 
@@ -164,7 +164,7 @@ In conclusion, this project demonstrates a holistic approach that combines advan
 
 ### Contributing
 
-We welcome contributions to the **SportsStatPredict** project! To contribute:
+We welcome contributions to the **Monte Carlo Simulation and Betting System for Premier League Predictions** project! To contribute:
 
 1. Fork the repository.
 2. Create a new branch for your feature: `git checkout -b feature-new-feature`
