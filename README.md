@@ -38,8 +38,8 @@ The **SportsStatPredict** project is designed to provide users with accurate pre
 
 1. Clone the repository:
    ```
-   git clone https://github.com/ACM40960/project-shubidiwoop.git   
-   cd SportsStatPredict
+   git clone https://github.com/ACM40960/project-VishalkrishnaBlaze.git 
+   cd project-VishalkrishnaBlaze
    ```
 2. Ensure you have Rstudio:
    Rstudio can be installed through (https://posit.co/products/open-source/rstudio/). The project was implemented on v4.2.1. 
