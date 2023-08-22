@@ -133,6 +133,8 @@ The Poisson distribution simulates football matches via MCMC due to its fit for 
    <p style="text-align: center;"><em>Figure 4: Relationship between Home Advantage and Mean Squared Error in football match simulation</em></p>
 </div>
 
+In Fig. 4, the Mean Squared Error (MSE) values are presented on the vertical axis, and the horizontal axis represents the home field advantage. The units for the MSE values in this context are based on the squared differences between actual and simulated points per team. Therefore, the MSE values are not associated with specific units like goals per game or percentage; they are a measure of the average squared error in points per team resulting from the model's predictions compared to the actual data. As such, the units for MSE remain relative to the squared points difference between the predicted and actual standings.
+
 ### Project Workflow
 
 1. Optimal split value derived from MAE.
@@ -239,6 +241,8 @@ procrustes(loc$points, loc2$points)
 |   4 | IW vs Homewin     |     0.8032 |
 |   5 | IW vs Awaywin     |     0.8463 |
 |   6 | Average IW        |     0.8247 |
+
+The provided correlation values shed light on the alignment between the predicted probabilities and the odds from these betting platforms (ie Bet365 and Interwetten) for different scenarios. Notably, the correlations between Bet365 odds and outcomes for the team to win in home and away ground (Homewin: 0.8109, Awaywin: 0.8465, Average: 0.8287), as well as the correlations between IW odds and outcomes (Homewin: 0.8032, Awaywin: 0.8463, Average: 0.8247), showcase the consistency between our model's predictions and the real-time odds. This observation underscores the potential utility of our approach for informed betting decisions.
   
 - Ensuring house profits:
 
